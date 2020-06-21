@@ -4,7 +4,7 @@
 
 
 ## BASIC STEPS TO CREATE PROJECT
-
+* git clone "project link mentioned in github"
 * npm i -g @loopback/cli
 * lb4 app
 * npm install loopback-connector-mongodb --save
@@ -17,3 +17,12 @@
 * lb4 controller : user
 * NOTE: (This will create basic user model, apis with their CRUD operations)
 
+### create password model
+* lb4 model : password(specify fields)
+* lb4 repository : password
+* NOTE: (This will create basic password model, apis with their CRUD operations)
+
+##### changes in project
+* request format is changed for api POST  /user(api used for create user) as password is added.
+* Service is added for creating hash and verify hash using bcrypt(Location: loopback-basics/src/services/hash.password.bcryptjs)
+* password is stored in password model with respective userID
