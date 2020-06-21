@@ -1,28 +1,28 @@
-import {
-  Count,
-  CountSchema,
-  Filter,
-  FilterExcludingWhere,
-  repository,
-  Where,
-} from '@loopback/repository';
-import {
-  post,
-  param,
-  get,
-  getModelSchemaRef,
-  patch,
-  put,
-  del,
-  requestBody,
-} from '@loopback/rest';
+import {inject} from '@loopback/core';
+import {Count, CountSchema, Filter, FilterExcludingWhere, model, property, repository, Where} from '@loopback/repository';
+import {del, get, getModelSchemaRef, param, patch, post, put, requestBody} from '@loopback/rest';
+import {PasswordHasherBindings} from '../keys';
 import {User} from '../models';
-import {UserRepository} from '../repositories';
+import {PasswordRepository, UserRepository} from '../repositories';
+import {PasswordHasher} from '../services/hash.password.bcryptjs';
+
+@model()
+export class NewUserRequest extends User {
+  @property({
+    type: 'string',
+    required: true,
+  })
+  password: string;
+}
 
 export class UserController {
   constructor(
     @repository(UserRepository)
-    public userRepository : UserRepository,
+    public userRepository: UserRepository,
+    @repository(PasswordRepository)
+    public passwordRepository: PasswordRepository,
+    @inject(PasswordHasherBindings.PASSWORD_HASHER)
+    public passwordHasher: PasswordHasher,
   ) {}
 
   @post('/users', {
@@ -37,16 +37,24 @@ export class UserController {
     @requestBody({
       content: {
         'application/json': {
-          schema: getModelSchemaRef(User, {
+          schema: getModelSchemaRef(NewUserRequest, {
             title: 'NewUser',
             exclude: ['id'],
           }),
         },
       },
     })
-    user: Omit<User, 'id'>,
+    newUserRequest: NewUserRequest,
   ): Promise<User> {
-    return this.userRepository.create(user);
+    let userPassword: string = newUserRequest.password;
+    delete newUserRequest.password;
+    let userData = await this.userRepository.create(newUserRequest);
+    const passwordHash = await this.passwordHasher.hashPassword(
+      userPassword,
+    );
+    let passwordDataToSet: {userId: string, password: string} = {userId: userData.id as string, password: passwordHash};
+    await this.passwordRepository.create(passwordDataToSet);
+    return userData;
   }
 
   @get('/users/count', {
