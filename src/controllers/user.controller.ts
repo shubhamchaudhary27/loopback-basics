@@ -1,10 +1,13 @@
+import {TokenService, UserService} from '@loopback/authentication';
 import {inject} from '@loopback/core';
 import {Count, CountSchema, Filter, FilterExcludingWhere, model, property, repository, Where} from '@loopback/repository';
 import {del, get, getModelSchemaRef, param, patch, post, put, requestBody} from '@loopback/rest';
-import {PasswordHasherBindings} from '../keys';
+import {PasswordHasherBindings, TokenServiceBindings, UserServiceBindings} from '../keys';
 import {User} from '../models';
 import {PasswordRepository, UserRepository} from '../repositories';
+import {Credentials} from '../repositories/user.repository';
 import {PasswordHasher} from '../services/hash.password.bcryptjs';
+import {CredentialsRequestBody} from './specs/user-controller.specs';
 
 @model()
 export class NewUserRequest extends User {
@@ -23,6 +26,10 @@ export class UserController {
     public passwordRepository: PasswordRepository,
     @inject(PasswordHasherBindings.PASSWORD_HASHER)
     public passwordHasher: PasswordHasher,
+    @inject(TokenServiceBindings.TOKEN_SERVICE)
+    public jwtService: TokenService,
+    @inject(UserServiceBindings.USER_SERVICE)
+    public userService: UserService<User, Credentials>,
   ) {}
 
   @post('/users', {
@@ -178,4 +185,43 @@ export class UserController {
   async deleteById(@param.path.string('id') id: string): Promise<void> {
     await this.userRepository.deleteById(id);
   }
+
+  @post('/users/login', {
+    responses: {
+      '200': {
+        description: 'Token',
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                token: {
+                  type: 'string',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+  async login(
+    @requestBody(CredentialsRequestBody) credentials: Credentials,
+  ): Promise<{token: string}> {
+    // ensure the user exists, and the password is correct
+    const user = await this.userService.verifyCredentials(credentials);
+    // // convert a User object into a UserProfile object (reduced set of properties)
+    const userProfile = this.userService.convertToUserProfile(user);
+    // // create a JSON Web Token based on the user profile
+    const token = await this.jwtService.generateToken(userProfile);
+    //get and update user password document
+    const passwordData = await this.passwordRepository.findOne({where: {userId: user.id}});
+    if (passwordData) {
+      let passwordDataToSet: {accessToken: string, userId: string, password: string} = {accessToken: token, userId: user.id as string, password: passwordData.password};
+      const id: string = passwordData.id as string;
+      await this.passwordRepository.updateById(id, passwordDataToSet);
+    }
+    return {token};
+  }
+
 }
