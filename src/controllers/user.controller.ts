@@ -56,10 +56,12 @@ export class UserController {
     let userPassword: string = newUserRequest.password;
     delete newUserRequest.password;
     let userData = await this.userRepository.create(newUserRequest);
+    //create password hash using bcrypt
     const passwordHash = await this.passwordHasher.hashPassword(
       userPassword,
     );
     let passwordDataToSet: {userId: string, password: string} = {userId: userData.id as string, password: passwordHash};
+    // password added in passsword model
     await this.passwordRepository.create(passwordDataToSet);
     return userData;
   }
